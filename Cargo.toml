@@ -1,0 +1,35 @@
+cargo-features = ["per-package-target", "edition2024"]
+
+[package]
+name = "cargo-cbt"
+version = "0.0.1"
+edition = "2021"
+autoexamples = false
+autobenches = false
+autotests = false
+
+[package.metadata]
+cargo-args = ["-Zmtime-on-use", "-Zavoid-dev-deps", "-Zcustom_mir"]
+
+
+[lib]
+name = "cargo_cbt"
+path = "cargo-cbt/lib.rs"
+test = false
+doctest = false
+bench = false
+doc = false
+
+
+[[bin]]
+name = "cargo-cbt"
+path = "cargo-cbt.rs"
+test = false
+doctest = false
+bench = false
+doc = false
+
+[dependencies]
+clap = { version = "4.5.27", features = ["derive", "env", "string", "unicode", "wrap_help"] }
+serde = { version = "1.0.217", features = ["derive"] }
+iocore = { version = "0.1000.0" }
