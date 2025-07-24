@@ -2,7 +2,7 @@ cargo-features = ["per-package-target", "edition2024"]
 
 [package]
 name = "cargo-cbt"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "Shortcut to cargo check, cargo build and cargo test"
 documentation = "https://docs.rs/cargo-cbt"
@@ -14,7 +14,7 @@ autobenches = false
 autotests = false
 
 [package.metadata]
-cargo-args = ["-Zmtime-on-use", "-Zavoid-dev-deps", "-Zcustom_mir"]
+
 
 
 [lib]
@@ -37,4 +37,4 @@ doc = false
 [dependencies]
 clap = { version = "4.5.27", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 serde = { version = "1.0.217", features = ["derive"] }
-iocore = { version = "0.1000.0" }
+iocore = { version = "3.0.1" }

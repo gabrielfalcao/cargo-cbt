@@ -14,26 +14,62 @@ pub struct Cli {
     #[arg(short, long)]
     purge: bool,
 
+    #[arg(short, long)]
+    release: bool,
+
+    #[arg(short = 'A', long)]
+    all_targets: bool,
+
+    #[arg(short, long)]
+    all_features: bool,
+
+    #[arg(short, long)]
+    ignore_errors: bool,
+
     #[arg(short = 'c', long, help = "capture test output")]
     test_capture: bool,
+
+    #[arg(short, long, help = "do not clear console before running")]
+    no_clear_console: bool,
+
+    #[arg(long)]
+    test: Option<String>,
 
     #[arg()]
     opts: Vec<String>,
 }
 impl Cli {
     pub fn rustc_and_cargo_opts(&self) -> String {
-        format!("--color always",).trim().to_string()
+        if iocore::env::var("COLORTERM")
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase()
+            == "truecolor"
+            || iocore::env::var("TERM")
+                .unwrap_or_default()
+                .trim()
+                .starts_with("xterm")
+        {
+            format!("--color always")
+        } else {
+            String::new()
+        }
     }
     pub fn opts(&self) -> String {
-        format!(
-            " {} {}",
+        [
             self.rustc_and_cargo_opts(),
-            if self.opts.is_empty() {
-                String::new()
-            } else {
-                self.opts.join(" ")
-            }
-        )
+            self.release
+                .then_some("--release".to_string())
+                .unwrap_or_default(),
+            self.all_targets
+                .then_some("--all-targets".to_string())
+                .unwrap_or_default(),
+            self.all_features
+                .then_some("--all-features".to_string())
+                .unwrap_or_default(),
+            self.opts.join(" "),
+        ]
+        .join(" ")
         .trim()
         .to_string()
     }
@@ -50,8 +86,13 @@ impl Cli {
                 self.opts.join(" ")
             } else {
                 format!(
-                    " -j 1{} -- --nocapture {}",
+                    " -j 1{}{} -- --nocapture {}",
                     self.opts.join(" "),
+                    if let Some(test) = &self.test {
+                        format!("--test {}", test)
+                    } else {
+                        String::new()
+                    },
                     self.rustc_and_cargo_opts()
                 )
             }
@@ -81,9 +122,29 @@ pub fn go(cli: &Cli) -> Result<()> {
             target.delete()?;
         }
     }
-    shell_command(format!("tput clear"), Path::cwd())?;
-    shell_command(cli.check_command(), Path::cwd())?;
-    shell_command(cli.build_command(), Path::cwd())?;
-    shell_command(cli.test_command(), Path::cwd())?;
+    if !cli.no_clear_console {
+        shell_command(format!("tput clear"), Path::cwd())?;
+    }
+
+    let commands = if let Some(_) = &cli.test {
+        vec![cli.test_command()]
+    } else {
+        vec![cli.check_command(), cli.build_command(), cli.test_command()]
+    };
+
+    let cwd = Path::cwd();
+    if cli.ignore_errors {
+        for command in commands.into_iter() {
+            if shell_command(&command, &cwd).is_ok() {
+                println!("{command}: OK");
+            } else {
+                eprintln!("{command}: ERROR");
+            }
+        }
+    } else {
+        for command in commands.into_iter() {
+            shell_command(&command, &cwd)?;
+        }
+    }
     Ok(())
 }

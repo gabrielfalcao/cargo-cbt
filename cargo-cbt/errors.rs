@@ -30,10 +30,10 @@ impl Display for Error {
             "{}{}",
             self.variant(),
             match self {
-                Self::InvalidUtf8(s) => format!("{}", s),
-                Self::ParseIntError(s) => format!("{}", s),
-                Self::CliError(s) => format!("{}", s),
-                Self::IOError(s) => format!("{}", s),
+                Self::InvalidUtf8(e) => e.to_string(),
+                Self::ParseIntError(e) => e.to_string(),
+                Self::CliError(e) => e.to_string(),
+                Self::IOError(e) => e.to_string(),
             }
         )
     }
@@ -72,8 +72,8 @@ impl From<std::io::Error> for Error {
         Error::IOError(format!("{}", e))
     }
 }
-impl From<iocore::Exception> for Error {
-    fn from(e: iocore::Exception) -> Self {
+impl From<iocore::Error> for Error {
+    fn from(e: iocore::Error) -> Self {
         Error::IOError(format!("{}", e))
     }
 }
