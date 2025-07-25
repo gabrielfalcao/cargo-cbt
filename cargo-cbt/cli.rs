@@ -11,6 +11,12 @@ pub struct Cli {
     #[arg(short, long)]
     quiet: bool,
 
+    #[arg(short, long, help = "build docs with `cargo docs'")]
+    docs: bool,
+
+    #[arg(short = 'O', long, requires = "docs", help = "runs `cargo docs --open'")]
+    open_docs: bool,
+
     #[arg(short, long)]
     purge: bool,
 
@@ -98,6 +104,14 @@ impl Cli {
             }
         )
     }
+    pub fn docs_opts(&self) -> String {
+        let opts = self.opts();
+        if self.open_docs {
+            format!("{opts} --open")
+        } else {
+            opts
+        }
+    }
     pub fn check_command(&self) -> String {
         format!("cargo check {}", self.check_opts())
             .trim()
@@ -110,6 +124,11 @@ impl Cli {
     }
     pub fn test_command(&self) -> String {
         format!("cargo test {}", self.test_opts())
+            .trim()
+            .to_string()
+    }
+    pub fn docs_command(&self) -> String {
+        format!("cargo docs {}", self.docs_opts())
             .trim()
             .to_string()
     }
@@ -126,11 +145,15 @@ pub fn go(cli: &Cli) -> Result<()> {
         shell_command(format!("tput clear"), Path::cwd())?;
     }
 
-    let commands = if let Some(_) = &cli.test {
+    let mut commands = if let Some(_) = &cli.test {
         vec![cli.test_command()]
     } else {
         vec![cli.check_command(), cli.build_command(), cli.test_command()]
     };
+
+    if cli.docs {
+        commands.push(cli.docs_command());
+    }
 
     let cwd = Path::cwd();
     if cli.ignore_errors {
