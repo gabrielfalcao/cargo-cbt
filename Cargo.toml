@@ -2,7 +2,7 @@ cargo-features = ["per-package-target", "edition2024"]
 
 [package]
 name = "cargo-cbt"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 description = "Shortcut to cargo check, cargo build and cargo test"
 documentation = "https://docs.rs/cargo-cbt"
