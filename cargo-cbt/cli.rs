@@ -107,9 +107,9 @@ impl Cli {
     pub fn docs_opts(&self) -> String {
         let opts = self.opts();
         if self.open_docs {
-            format!("{opts} --open")
+            format!("{opts} --open --no-deps")
         } else {
-            opts
+            format!("{opts} --no-deps")
         }
     }
     pub fn check_command(&self) -> String {
