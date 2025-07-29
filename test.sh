@@ -11,6 +11,12 @@
 
 set -e
 
-cargo run > run.log
+cargo run --        > run.log
+
 cargo install --path .
-cargo cbt > cbt.log
+
+cargo cbt -ai       > ai.cbt.log
+cargo cbt -aid      > aid.cbt.log
+cargo cbt -raid     > raid.cbt.log
+cargo cbt           > normal.cbt.log
+cargo cbt -rwaid    > raid.cbt.log

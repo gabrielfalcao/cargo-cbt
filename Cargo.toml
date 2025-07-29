@@ -38,3 +38,4 @@ doc = false
 clap = { version = "4.5.27", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 serde = { version = "1.0.217", features = ["derive"] }
 iocore = { version = "3.0.1" }
+toml = "0.9.2"

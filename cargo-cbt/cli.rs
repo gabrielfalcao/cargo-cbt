@@ -1,4 +1,4 @@
-use crate::{shell_command, Result};
+use crate::{shell_command, Manifest, Result};
 use clap::Parser;
 use iocore::Path;
 
@@ -14,11 +14,22 @@ pub struct Cli {
     #[arg(short, long, help = "build docs with `cargo docs'")]
     docs: bool,
 
-    #[arg(short = 'O', long, requires = "docs", help = "runs `cargo docs --open'")]
+    #[arg(
+        short = 'O',
+        long,
+        requires = "docs",
+        help = "runs `cargo docs --open'"
+    )]
     open_docs: bool,
+
+    #[arg(short = 'R', long, help = "execute with `cargo run' if suitable")]
+    run: bool,
 
     #[arg(short, long)]
     purge: bool,
+
+    #[arg(short, long, help = "wipe target/ folder after builds")]
+    wipe: bool,
 
     #[arg(short, long)]
     release: bool,
@@ -45,6 +56,9 @@ pub struct Cli {
     opts: Vec<String>,
 }
 impl Cli {
+    pub fn manifest(&self) -> Result<Manifest> {
+        Ok(Manifest::default()?)
+    }
     pub fn rustc_and_cargo_opts(&self) -> String {
         if iocore::env::var("COLORTERM")
             .unwrap_or_default()
@@ -112,6 +126,35 @@ impl Cli {
             format!("{opts} --no-deps")
         }
     }
+    pub fn run_opts(&self, manifest: &Manifest) -> String {
+        let opts = self.opts();
+        if let Some(bin_names) = manifest.bin_names() {
+            if let Some(name) = bin_names.first() {
+                return format!("{opts} --bin {name}");
+            }
+        }
+        if let Some(example_names) = manifest.example_names() {
+            if let Some(name) = example_names.first() {
+                return format!("{opts} --example {name}");
+            }
+        }
+        opts
+    }
+    pub fn run_command_can_run(&self, manifest: &Manifest) -> bool {
+        if !self.run {
+            false
+        } else if let Some(bin_names) = manifest.bin_names() {
+            true
+        } else if let Some(example_names) = manifest.example_names() {
+            if let Some(name) = example_names.first() {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
     pub fn check_command(&self) -> String {
         format!("cargo check {}", self.check_opts())
             .trim()
@@ -132,9 +175,26 @@ impl Cli {
             .trim()
             .to_string()
     }
+
+    pub fn run_command(&self, manifest: &Manifest) -> String {
+        format!("cargo run {}", self.run_opts(manifest))
+            .trim()
+            .to_string()
+    }
+    pub fn post_run(&self) -> Result<()> {
+        if self.wipe {
+            let target = Path::new("target");
+            if target.is_dir() {
+                target.delete()?;
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn go(cli: &Cli) -> Result<()> {
+    let manifest = cli.manifest()?;
+
     if cli.purge {
         let target = Path::new("target");
         if target.is_dir() {
@@ -154,6 +214,9 @@ pub fn go(cli: &Cli) -> Result<()> {
     if cli.docs {
         commands.push(cli.docs_command());
     }
+    if cli.run_command_can_run(&manifest) {
+        commands.push(cli.run_command(&manifest));
+    }
 
     let cwd = Path::cwd();
     if cli.ignore_errors {
@@ -164,9 +227,20 @@ pub fn go(cli: &Cli) -> Result<()> {
                 eprintln!("{command}: ERROR");
             }
         }
+        if let Err(error) = cli.post_run() {
+            eprintln!("cargo-cbt post-run error: {error}");
+        }
     } else {
         for command in commands.into_iter() {
-            shell_command(&command, &cwd)?;
+            match shell_command(&command, &cwd) {
+                Ok(_) => {}
+                Err(e) => {
+                    if let Err(error) = cli.post_run() {
+                        eprintln!("cargo-cbt post-run error: {error}");
+                    }
+                    return Err(e);
+                }
+            };
         }
     }
     Ok(())
