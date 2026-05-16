@@ -8,6 +8,8 @@ pub enum Error {
     InvalidUtf8(String),
     ParseError(String),
     CliError(String),
+    PostRunError(String),
+    RuntimeError(String),
     IOError(String),
 }
 
@@ -29,10 +31,12 @@ impl Display for Error {
             "{}{}",
             self.variant(),
             match self {
-                Self::InvalidUtf8(e) => e.to_string(),
-                Self::ParseError(e) => e.to_string(),
-                Self::CliError(e) => e.to_string(),
-                Self::IOError(e) => e.to_string(),
+                Error::InvalidUtf8(e) => e.to_string(),
+                Error::ParseError(e) => e.to_string(),
+                Error::CliError(e) => e.to_string(),
+                Error::PostRunError(e) => e.to_string(),
+                Error::RuntimeError(e) => e.to_string(),
+                Error::IOError(e) => e.to_string(),
             }
         )
     }
@@ -44,6 +48,8 @@ impl Error {
             Error::InvalidUtf8(_) => "InvalidUtf8",
             Error::ParseError(_) => "ParseError",
             Error::CliError(_) => "CliError",
+            Error::PostRunError(_) => "PostRunError",
+            Error::RuntimeError(_) => "RuntimeError",
             Error::IOError(_) => "IOError",
         }
         .to_string()

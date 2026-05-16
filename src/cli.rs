@@ -1,15 +1,16 @@
 use crate::{shell_command, Manifest, Result};
 use clap::Parser;
 use iocore::Path;
+use std::ops::Deref;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = "cargo_cbt command-line utility")]
+#[command(author, version, about, long_about = "cargo cbt")]
 pub struct Cli {
     #[arg()]
     path: Option<Path>,
 
-    #[arg(short, long)]
-    quiet: bool,
+    #[arg(short, long, conflicts_with = "quiet")]
+    verbose: bool,
 
     #[arg(short, long, help = "build docs with `cargo docs'")]
     docs: bool,
@@ -22,7 +23,7 @@ pub struct Cli {
     )]
     open_docs: bool,
 
-    #[arg(short = 'R', long, help = "execute with `cargo run' if suitable")]
+    #[arg(short = 'r', long, help = "execute with `cargo run' if suitable")]
     run: bool,
 
     #[arg(short, long)]
@@ -32,16 +33,10 @@ pub struct Cli {
     wipe: bool,
 
     #[arg(short, long)]
-    release: bool,
-
-    #[arg(short = 'A', long)]
-    all_targets: bool,
-
-    #[arg(short, long)]
-    all_features: bool,
-
-    #[arg(short, long)]
     ignore_errors: bool,
+
+    #[arg(short, long, conflicts_with = "ignore_errors")]
+    fail_fast: bool,
 
     #[arg(short = 'c', long, help = "capture test output")]
     test_capture: bool,
@@ -52,30 +47,20 @@ pub struct Cli {
     #[arg(long)]
     test: Option<String>,
 
-    #[arg()]
-    opts: Vec<String>,
+    #[arg(flatten, last = true)]
+    cargo_subcommands: CargoSubcommandOpt,
 }
 impl Cli {
+    pub fn verbose_errors(&self) -> bool {
+        !self.quiet
+    }
+    pub fn verbose(&self) -> bool {
+        !self.quiet && self.verbose
+    }
     pub fn manifest(&self) -> Result<Manifest> {
         Ok(Manifest::default()?)
     }
-    pub fn rustc_and_cargo_opts(&self) -> String {
-        if iocore::env::var("COLORTERM")
-            .unwrap_or_default()
-            .trim()
-            .to_lowercase()
-            == "truecolor"
-            || iocore::env::var("TERM")
-                .unwrap_or_default()
-                .trim()
-                .starts_with("xterm")
-        {
-            format!("--color always")
-        } else {
-            String::new()
-        }
-    }
-    pub fn opts(&self) -> String {
+    pub fn opts(&self, subcommand_opts: &CargoSubcommandOpt) -> String {
         [
             self.rustc_and_cargo_opts(),
             self.release
@@ -183,12 +168,33 @@ impl Cli {
     }
     pub fn post_run(&self) -> Result<()> {
         if self.wipe {
-            let target = Path::new("target");
-            if target.is_dir() {
-                target.delete()?;
+            let build_path = Path::new("target");
+            match build_path.canonicalize() {
+                Ok(target) => {
+                    let path = target.abbreviate();
+                    if target.is_dir() {
+                        if self.verbose() {
+                            eprintln!("deleting build directory: {path}")
+                        }
+                        target
+                            .delete()
+                            .map_err(|error| Error::PostRunError(format!("failed to delete")))?;
+                    }
+                }
+                Err(error) => {
+                    let target = build_path.try_canonicalize().to_string();
+                    eprintln!("WARNING: post-run cannot delete {target:#?}: {error}");
+                }
             }
         }
         Ok(())
+    }
+}
+impl Deref for Cli {
+    type Target = CargoSubcommandOpt;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cargo_subcommands
     }
 }
 
@@ -202,7 +208,7 @@ pub fn go(cli: &Cli) -> Result<()> {
         }
     }
     if !cli.no_clear_console {
-        shell_command(format!("tput clear"), Path::cwd())?;
+        print!("\r\x1b[2J\x1b[3J\x1b[H");
     }
 
     let mut commands = if let Some(_) = &cli.test {
@@ -219,29 +225,108 @@ pub fn go(cli: &Cli) -> Result<()> {
     }
 
     let cwd = Path::cwd();
-    if cli.ignore_errors {
-        for command in commands.into_iter() {
-            if shell_command(&command, &cwd).is_ok() {
-                println!("{command}: OK");
-            } else {
-                eprintln!("{command}: ERROR");
+
+    for command in commands.into_iter() {
+        match shell_command(&command, &cwd) {
+            Ok(_) => {
+                //
+                if self.verbose() {
+                    eprintln!("{command}: OK");
+                }
+            }
+            Err(error) => {
+                //
+                if self.verbose_errors() {
+                    eprintln!("{command}: ERROR");
+                }
+                if self.fail_fast() {
+                    std::process::exit(1);
+                }
             }
         }
-        if let Err(error) = cli.post_run() {
+    }
+    if let Err(error) = cli.post_run() {
+        if self.verbose_errors() {
             eprintln!("cargo-cbt post-run error: {error}");
-        }
-    } else {
-        for command in commands.into_iter() {
-            match shell_command(&command, &cwd) {
-                Ok(_) => {}
-                Err(e) => {
-                    if let Err(error) = cli.post_run() {
-                        eprintln!("cargo-cbt post-run error: {error}");
-                    }
-                    return Err(e);
-                }
-            };
         }
     }
     Ok(())
+}
+
+#[derive(Parser, Debug, Clone, Copy)]
+pub struct CargoSubcommandOpt {
+    #[arg(short = 'q', long)]
+    quiet: bool,
+
+    #[arg(short = 'R', long)]
+    release: bool,
+
+    #[arg(short = 'd', long)]
+    debug: bool,
+
+    #[arg(short = 'A', long)]
+    all_targets: bool,
+
+    #[arg(short = 'a', long)]
+    all_features: bool,
+
+    #[arg(long = 'o', help = "runs cargo subcommands in `--offline' mode")]
+    offline: bool,
+
+    #[arg(last = true, allow_hyphen_values = true)]
+    opts: Vec<String>,
+}
+
+impl CargoSubcommandOpt {
+    pub fn quiet(&self) -> bool {
+        self.quiet
+    }
+    pub fn release(&self) -> bool {
+        self.release
+    }
+    pub fn debug(&self) -> bool {
+        self.debug
+    }
+    pub fn offline(&self) -> bool {
+        self.offline
+    }
+    pub fn all_targets(&self) -> bool {
+        self.all_targets
+    }
+    pub fn all_features(&self) -> bool {
+        self.all_features
+    }
+
+    pub fn rustc_and_cargo_opts(&self) -> String {
+        let mut opts_list = Vec::<String>::new();
+        if env_vars_color_heuristic() {
+            opts_list.push("--color always".to_string());
+        }
+        if self.offline {
+            opts_list.push("--offline".to_string());
+        }
+        opts_list.join(" ")
+    }
+    pub fn without_release(&self) -> CargoSubcommandOpt {
+        let mut opts = self.clone();
+        opts.release = false;
+        opts
+    }
+    pub fn with_release(&self) -> CargoSubcommandOpt {
+        let mut opts = self.clone();
+        opts.release = false;
+        opts
+    }
+}
+
+pub fn env_vars_color_heuristic() -> bool {
+    iocore::env::var("COLORTERM")
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+        == "truecolor"
+        || iocore::env::var("TERM")
+            .unwrap_or_default()
+            .trim()
+            .starts_with("xterm")
 }
