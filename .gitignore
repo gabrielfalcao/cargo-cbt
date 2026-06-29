@@ -1,6 +1,4 @@
-
 *.log
-
-
 .logs/
+Cargo.lock
 
